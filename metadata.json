@@ -1,0 +1,6 @@
+{
+  "name": "Automated Trend Detection System",
+  "description": "Real-time 4-step pipeline prototype: ingestion, NLP topic clustering, velocity scoring engine, and automated alerting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

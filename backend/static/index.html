@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrendPulse — Automated Real-Time Trend Detection System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+    }
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(229, 231, 235, 0.8);
+    }
+    .pulse-dot {
+      animation: pulseDot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.15); }
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Sentiment badge colours */
+    .sentiment-bullish  { background:#dcfce7; color:#15803d; border-color:#86efac; }
+    .sentiment-crisis   { background:#fee2e2; color:#b91c1c; border-color:#fca5a5; }
+    .sentiment-viral    { background:#fef3c7; color:#b45309; border-color:#fcd34d; }
+    .sentiment-informational { background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; }
+  </style>
+</head>
+<body class="bg-[#FBFBFA] text-stone-900 min-h-screen flex flex-col antialiased selection:bg-orange-500 selection:text-white">
+
+  <!-- TOP APP HEADER -->
+  <header class="border-b border-stone-200/80 bg-white/95 sticky top-0 z-30 shadow-xs backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo & Status -->
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 via-amber-500 to-yellow-500 flex items-center justify-center text-white shadow-md shadow-orange-500/20">
+            <i data-lucide="activity" class="w-5 h-5 stroke-[2.5]"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-bold text-stone-900 tracking-tight flex items-center gap-1.5">
+                TrendPulse
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-200">Python 3.12</span>
+              </h1>
+              <span id="pipeline-status-badge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span id="pipeline-pulse-dot" class="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500 pulse-dot"></span>
+                <span id="pipeline-status-text">Pipeline Active</span>
+              </span>
+            </div>
+            <p class="text-xs text-stone-500 truncate max-w-md hidden md:block font-medium">
+              Multi-Source Feed Ingestion • 7-Day Rolling Baseline • Velocity Multipliers • Webhooks
+            </p>
+          </div>
+        </div>
+
+        <!-- Action Toolbar -->
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
+          <!-- Audio Alerts Toggle -->
+          <button id="btn-sound-toggle" onclick="toggleAudioAlerts()" class="cursor-pointer inline-flex items-center px-2 py-1.5 rounded-lg text-xs font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 transition-all shadow-xs" title="Toggle audio alert chime">
+            <i id="icon-sound" data-lucide="volume-2" class="w-3.5 h-3.5 mr-1 text-emerald-600"></i>
+            <span id="text-sound" class="hidden sm:inline">Sound On</span>
+          </button>
+
+          <!-- Export CSV & JSON -->
+          <a href="/api/export/clusters.csv" download="trendpulse_clusters.csv" class="cursor-pointer inline-flex items-center px-2 py-1.5 rounded-lg text-xs font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 transition-all shadow-xs" title="Export clusters as CSV">
+            <i data-lucide="download" class="w-3.5 h-3.5 sm:mr-1 text-stone-600"></i>
+            <span class="hidden sm:inline">CSV</span>
+          </a>
+          <a href="/api/export/alerts.json" download="trendpulse_alerts.json" class="cursor-pointer inline-flex items-center px-2 py-1.5 rounded-lg text-xs font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 transition-all shadow-xs" title="Export alerts as JSON">
+            <i data-lucide="file-json" class="w-3.5 h-3.5 sm:mr-1 text-stone-600"></i>
+            <span class="hidden sm:inline">JSON</span>
+          </a>
+
+          <button id="btn-simulate-spike" onclick="openSpikeModal()" class="cursor-pointer inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300 hover:border-amber-400 hover:shadow-xs transition-all">
+            <i data-lucide="zap" class="w-3.5 h-3.5 sm:mr-1 text-amber-600 fill-amber-500"></i>
+            <span>Inject Spike</span>
+          </button>
+
+          <button id="btn-trigger-step" onclick="triggerManualPoll()" class="cursor-pointer inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 hover:text-stone-900 transition-all shadow-xs">
+            <i id="icon-poll" data-lucide="refresh-cw" class="w-3.5 h-3.5 sm:mr-1 text-stone-600"></i>
+            <span class="hidden sm:inline">Poll Feeds</span>
+          </button>
+
+          <button id="btn-toggle-pipeline" onclick="togglePipeline()" class="cursor-pointer inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-700 hover:bg-stone-200 border border-stone-300 transition-colors shadow-xs">
+            <i id="icon-toggle" data-lucide="pause" class="w-3.5 h-3.5 sm:mr-1"></i>
+            <span id="text-toggle" class="hidden sm:inline">Pause</span>
+          </button>
+
+          <button id="btn-open-settings" onclick="openSettingsModal()" class="cursor-pointer p-1.5 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-100 border border-transparent hover:border-stone-200 transition-colors" title="Pipeline Settings">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="flex space-x-1 border-t border-stone-100 overflow-x-auto no-scrollbar py-2">
+        <button id="tab-clusters" onclick="switchTab('clusters')" class="cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-stone-900 text-white">
+          <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+          <span>Topic Clusters</span>
+          <span id="badge-cluster-count" class="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-700 text-stone-200 font-mono">0</span>
+        </button>
+        <button id="tab-alerts" onclick="switchTab('alerts')" class="cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-stone-600 hover:text-stone-900 hover:bg-stone-100">
+          <i data-lucide="bell" class="w-3.5 h-3.5"></i>
+          <span>Alerts &amp; Webhooks</span>
+          <span id="badge-alert-count" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-100 text-rose-800 font-mono">0</span>
+        </button>
+        <button id="tab-feed" onclick="switchTab('feed')" class="cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-stone-600 hover:text-stone-900 hover:bg-stone-100">
+          <i data-lucide="database" class="w-3.5 h-3.5"></i>
+          <span>Ingested Raw Feed</span>
+        </button>
+        <button id="tab-architecture" onclick="switchTab('architecture')" class="cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-stone-600 hover:text-stone-900 hover:bg-stone-100">
+          <i data-lucide="file-code" class="w-3.5 h-3.5"></i>
+          <span>Python Architecture Docs</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- 4-STEP PIPELINE STATUS BANNER -->
+    <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-stone-200/60">
+        <div>
+          <h2 class="text-xs sm:text-sm font-bold text-stone-900 uppercase tracking-wider flex items-center gap-2">
+            <span>4-Step Trend Detection Pipeline</span>
+            <span class="text-[11px] font-normal text-stone-500 lowercase">(FastAPI + SQLite + Pandas)</span>
+          </h2>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-stone-600 font-mono">
+          <span>Threshold: <strong id="stat-threshold" class="text-stone-900">5.0x</strong></span>
+          <span class="text-stone-300">•</span>
+          <span>Min Vol: <strong id="stat-minvol" class="text-stone-900">8</strong></span>
+          <span class="text-stone-300">•</span>
+          <span>Cooldown: <strong id="stat-cooldown" class="text-stone-900">30m</strong></span>
+        </div>
+      </div>
+
+      <!-- 4 Step Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Step 1 -->
+        <div class="p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 hover:bg-white hover:shadow-xs transition-all">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Step 1: Ingestion</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">6 Feeds</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+              <i data-lucide="database" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <span id="stat-posts-count" class="text-sm font-bold text-stone-900">0 posts</span>
+              <span class="text-[10px] text-stone-500 block">Reddit, Trends, Bsky, HN, Wiki</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 hover:bg-white hover:shadow-xs transition-all">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Step 2: NLP Cluster</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">NER / Tokens</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center">
+              <i data-lucide="cpu" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <span id="stat-clusters-count" class="text-sm font-bold text-stone-900">0 clusters</span>
+              <span class="text-[10px] text-stone-500 block">Entities &amp; Topic Affinity</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 hover:bg-white hover:shadow-xs transition-all">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Step 3: Velocity Engine</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Pandas Rolling</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <span id="stat-spikes-count" class="text-sm font-bold text-stone-900">0 spikes</span>
+              <span class="text-[10px] text-stone-500 block">V_1h vs 7d Baseline (Z-Score)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="p-3.5 rounded-xl border border-stone-200 bg-stone-50/70 hover:bg-white hover:shadow-xs transition-all">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Step 4: Webhook &amp; AI</span>
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold">Discord / Slack</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center">
+              <i data-lucide="send" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <span id="stat-alerts-count" class="text-sm font-bold text-stone-900">0 dispatched</span>
+              <span class="text-[10px] text-stone-500 block">Gemini 3.8 Flash Summaries</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 1: TOPIC CLUSTERS -->
+    <div id="view-clusters" class="space-y-4">
+      <!-- Search & Filter Controls -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-stone-200 shadow-xs">
+        <div class="relative flex-1 max-w-md">
+          <i data-lucide="search" class="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input
+            id="cluster-search-input"
+            type="text"
+            oninput="renderClusters()"
+            placeholder="Search topic or entity (e.g. OpenAI, Box Office, Federal Reserve)..."
+            class="w-full pl-9 pr-4 py-1.5 text-xs sm:text-sm rounded-lg border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:border-orange-500 transition-colors"
+          />
+        </div>
+
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <button id="filter-all" onclick="setClusterFilter('all')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-stone-900 text-white">All Clusters</button>
+          <button id="filter-spikes" onclick="setClusterFilter('spike')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+            Spikes &gt;5x
+          </button>
+          <button id="filter-accelerating" onclick="setClusterFilter('accelerating')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200">
+            Accelerating
+          </button>
+          <button id="filter-emerging" onclick="setClusterFilter('emerging')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 flex items-center gap-1">
+            🌱 Emerging
+          </button>
+          <button id="filter-decaying" onclick="setClusterFilter('decaying')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 flex items-center gap-1">
+            📉 Decaying
+          </button>
+          <button id="filter-crisis" onclick="setClusterFilter('crisis')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 flex items-center gap-1">
+            🚨 Crisis
+          </button>
+          <button id="filter-bullish" onclick="setClusterFilter('bullish')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 flex items-center gap-1">
+            📈 Bullish
+          </button>
+          <button id="filter-viral" onclick="setClusterFilter('viral')" class="cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 flex items-center gap-1">
+            ⚡ Viral
+          </button>
+        </div>
+      </div>
+
+      <!-- Clusters Grid -->
+      <div id="clusters-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Cluster cards injected via JS -->
+      </div>
+    </div>
+
+    <!-- VIEW 2: ALERTS & WEBHOOKS -->
+    <div id="view-alerts" class="space-y-6 hidden">
+      <!-- Webhook Dispatcher Card -->
+      <div class="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 class="text-sm font-bold text-stone-900 flex items-center gap-2">
+              <i data-lucide="send" class="w-4 h-4 text-orange-600"></i>
+              Automated Webhook Dispatcher (Discord &amp; Slack)
+            </h3>
+            <p class="text-xs text-stone-500 mt-1">
+              Spike alerts dispatch immediately when velocity multiplier exceeds the threshold. Test a webhook channel live:
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2 max-w-md w-full">
+            <input
+              id="webhook-test-url-input"
+              type="url"
+              placeholder="https://discord.com/api/webhooks/... or https://hooks.slack.com/..."
+              class="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:border-orange-500 font-mono"
+            />
+            <button
+              id="btn-test-webhook-submit"
+              onclick="testWebhookPing()"
+              class="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-white hover:bg-stone-800 transition-colors whitespace-nowrap shadow-xs"
+            >
+              Test Ping
+            </button>
+          </div>
+        </div>
+
+        <div id="webhook-test-result" class="hidden mt-3 pt-3 border-t border-stone-100 text-xs font-medium"></div>
+      </div>
+
+      <!-- Alerts List -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-2">
+            <span>Dispatched Alert History</span>
+            <span id="alerts-count-label" class="text-stone-400 font-mono font-normal"></span>
+          </h3>
+          <button id="btn-clear-alerts" onclick="clearAlertHistory()" class="cursor-pointer text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 shadow-2xs" title="Clear all historical dispatched alerts">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Clear History</span>
+          </button>
+        </div>
+        <div id="alerts-list" class="space-y-3">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: INGESTED RAW FEED -->
+    <div id="view-feed" class="space-y-4 hidden">
+      <div class="bg-white rounded-xl border border-stone-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="database" class="w-4 h-4 text-orange-600"></i>
+          <h3 class="text-sm font-semibold text-stone-900">Multi-Platform Ingestion Stream</h3>
+          <span id="feed-buffer-count" class="text-xs text-stone-400 font-mono"></span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input
+            id="feed-search-input"
+            type="text"
+            oninput="renderFeed()"
+            placeholder="Filter stream titles or entities..."
+            class="px-3 py-1.5 text-xs rounded-lg border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:border-orange-500 w-48 sm:w-64"
+          />
+          <select id="feed-source-select" onchange="renderFeed()" class="px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 bg-stone-50 text-stone-700">
+            <option value="all">All Sources</option>
+            <option value="reddit">Reddit /rising</option>
+            <option value="google_trends">Google Trends</option>
+            <option value="bluesky">Bluesky</option>
+            <option value="hackernews">Hacker News</option>
+            <option value="wikipedia">Wikipedia</option>
+            <option value="wire_news">BBC Wire</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="feed-list" class="space-y-2.5">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+
+    <!-- VIEW 4: ARCHITECTURE DOCS -->
+    <div id="view-architecture" class="space-y-4 hidden">
+      <div class="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-stone-900 flex items-center gap-2">
+              <i data-lucide="file-code" class="w-5 h-5 text-orange-600"></i>
+              Python 3.12 Backend Architecture &amp; Mathematical Engine
+            </h3>
+            <p class="text-xs text-stone-500 mt-0.5">
+              The automated pipeline is built on FastAPI, SQLite3, Pandas time-series rolling baselines, and Google GenAI SDK.
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5 bg-stone-100 p-1 rounded-lg">
+            <button onclick="switchArchTab('step1')" id="arch-tab-step1" class="cursor-pointer px-2.5 py-1 text-xs font-semibold rounded bg-white text-stone-900 shadow-2xs">Ingestion</button>
+            <button onclick="switchArchTab('step2')" id="arch-tab-step2" class="cursor-pointer px-2.5 py-1 text-xs font-semibold rounded text-stone-600 hover:text-stone-900">Clustering</button>
+            <button onclick="switchArchTab('step3')" id="arch-tab-step3" class="cursor-pointer px-2.5 py-1 text-xs font-semibold rounded text-stone-600 hover:text-stone-900">Velocity Math</button>
+            <button onclick="switchArchTab('step4')" id="arch-tab-step4" class="cursor-pointer px-2.5 py-1 text-xs font-semibold rounded text-stone-600 hover:text-stone-900">Webhooks</button>
+          </div>
+        </div>
+
+        <div class="relative bg-stone-950 rounded-xl p-4 text-stone-200 font-mono text-xs overflow-x-auto">
+          <pre id="arch-code-block" class="leading-relaxed"><code># Loading architecture snippet...</code></pre>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL: INJECT BREAKING SPIKE -->
+  <div id="modal-spike" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-xs hidden">
+    <div class="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95">
+      <div class="flex items-center justify-between p-4 sm:p-5 border-b border-stone-100 bg-stone-50/50">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+            <i data-lucide="zap" class="w-4 h-4 fill-amber-500"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-stone-900">Simulate Breaking Velocity Spike</h3>
+            <p class="text-xs text-stone-500">Test immediate 10x–15x velocity acceleration &amp; automated alerting</p>
+          </div>
+        </div>
+        <button onclick="closeSpikeModal()" class="cursor-pointer p-1 text-stone-400 hover:text-stone-700 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleInjectSpikeSubmit(event)" class="p-4 sm:p-5 space-y-4 text-xs">
+        <div>
+          <label class="font-bold text-stone-700 block mb-1.5">Preset Breaking Events</label>
+          <select id="spike-preset-select" onchange="applySpikePreset()" class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs">
+            <option value="0">Historic Box Office Weekend ($350M Opening) — 95 mentions (+15.8x)</option>
+            <option value="1">Emergency Central Bank Rate Decision — 120 mentions (+19.2x)</option>
+            <option value="2">World Championship Finals Upset — 110 mentions (+17.4x)</option>
+            <option value="3">NASA James Webb Exoplanet Discovery — 85 mentions (+14.5x)</option>
+            <option value="4">Breakthrough Iron-Air Grid Battery — 65 mentions (+12.8x)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="font-bold text-stone-700 block mb-1">Topic Name</label>
+          <input id="spike-topic-input" type="text" required class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-stone-700 block mb-1">Core Entity</label>
+            <input id="spike-entity-input" type="text" required class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+          </div>
+          <div>
+            <label class="font-bold text-stone-700 block mb-1">Surge Mentions (1h Volume)</label>
+            <input id="spike-volume-input" type="number" min="15" max="250" value="75" class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+          </div>
+        </div>
+
+        <div>
+          <label class="font-bold text-stone-700 block mb-1">Lead Breaking Headline</label>
+          <textarea id="spike-headline-input" rows="2" required class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+          <button type="button" onclick="closeSpikeModal()" class="cursor-pointer px-3.5 py-1.5 rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50">Cancel</button>
+          <button type="submit" id="btn-submit-spike" class="cursor-pointer px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold hover:from-amber-600 hover:to-orange-700 shadow-xs flex items-center gap-1.5">
+            <i data-lucide="zap" class="w-3.5 h-3.5 fill-white"></i>
+            <span>Inject Breaking Surge</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CLUSTER DETAIL & AI BRIEF -->
+  <div id="modal-cluster-detail" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-xs hidden">
+    <div class="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+      <div class="p-4 sm:p-5 border-b border-stone-100 bg-stone-50/60 flex items-start justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span id="modal-cluster-status" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200"></span>
+            <span id="modal-cluster-sentiment-badge"></span>
+            <span id="modal-cluster-id" class="text-xs text-stone-400 font-mono"></span>
+          </div>
+          <h3 id="modal-cluster-title" class="text-base sm:text-lg font-bold text-stone-900 leading-snug"></h3>
+        </div>
+        <button onclick="closeClusterModal()" class="cursor-pointer p-1 text-stone-400 hover:text-stone-700 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 sm:p-5 overflow-y-auto space-y-5 text-xs flex-1">
+        <!-- Velocity Math Breakdown -->
+        <div class="bg-stone-900 text-stone-200 rounded-xl p-4 font-mono">
+          <div class="flex items-center gap-2 text-xs font-semibold text-orange-400 mb-2 uppercase tracking-wider">
+            <i data-lucide="calculator" class="w-4 h-4"></i>
+            <span>Pandas Velocity Engine Math Breakdown</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+            <div class="bg-stone-800/80 p-2.5 rounded-lg border border-stone-700">
+              <span class="text-[10px] text-stone-400 block">1h Volume (V_1h)</span>
+              <span id="detail-v1h" class="text-base font-bold text-white">0</span>
+            </div>
+            <div class="bg-stone-800/80 p-2.5 rounded-lg border border-stone-700">
+              <span class="text-[10px] text-stone-400 block">7d Baseline (μ)</span>
+              <span id="detail-baseline" class="text-base font-bold text-white">0/hr</span>
+            </div>
+            <div class="bg-stone-800/80 p-2.5 rounded-lg border border-stone-700">
+              <span class="text-[10px] text-stone-400 block">Multiplier</span>
+              <span id="detail-multiplier" class="text-base font-bold text-orange-400">0x</span>
+            </div>
+            <div class="bg-stone-800/80 p-2.5 rounded-lg border border-stone-700">
+              <span class="text-[10px] text-stone-400 block">Z-Score</span>
+              <span id="detail-zscore" class="text-base font-bold text-emerald-400">+0σ</span>
+            </div>
+          </div>
+          <div class="mt-2 text-[11px] text-stone-400">
+            Formula: <code>Multiplier = V_1h / max(Baseline, 1.5)</code> | <code>Z = (V_1h - μ) / σ</code>
+          </div>
+        </div>
+
+        <!-- Interactive Analytics: Velocity Acceleration Curve & Source Dispersion -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-stone-50 border border-stone-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-bold text-[11px] text-stone-700 uppercase tracking-wider flex items-center gap-1">
+                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-orange-600"></i>
+                Velocity Curve
+              </span>
+              <span class="text-[10px] text-rose-600 font-semibold font-mono">--- Spike Limit</span>
+            </div>
+            <div class="h-36 relative">
+              <canvas id="cluster-velocity-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-stone-50 border border-stone-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-bold text-[11px] text-stone-700 uppercase tracking-wider flex items-center gap-1">
+                <i data-lucide="pie-chart" class="w-3.5 h-3.5 text-indigo-600"></i>
+                Source Dispersion
+              </span>
+              <span id="detail-sources-count" class="text-[10px] text-stone-500 font-mono">0 channels</span>
+            </div>
+            <div class="h-36 relative flex items-center justify-center">
+              <canvas id="cluster-sources-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sentiment Intelligence Panel -->
+        <div id="detail-sentiment-panel" class="hidden">
+          <div class="flex items-center gap-1.5 mb-2 uppercase tracking-wider text-[11px] font-bold text-stone-900">
+            <i data-lucide="brain" class="w-3.5 h-3.5 text-purple-600"></i>
+            VADER Sentiment Analysis
+            <span class="text-[9px] font-normal text-stone-400 normal-case ml-1">offline &bull; no API</span>
+          </div>
+          <div id="detail-sentiment-card" class="flex items-start gap-3 p-3 rounded-xl border text-xs"></div>
+        </div>
+
+        <!-- AI Brief Card -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-stone-900 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-orange-600"></i>
+              AI Trend Intelligence Brief
+              <span class="text-[9px] font-normal text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-mono ml-1">100% offline &bull; free</span>
+            </span>
+            <button id="btn-generate-brief" onclick="triggerAISummarize()" class="cursor-pointer px-2.5 py-1 rounded text-xs font-semibold bg-orange-600 text-white hover:bg-orange-700 transition-colors shadow-2xs">
+              Generate Brief
+            </button>
+          </div>
+          <div id="detail-ai-box" class="p-3.5 rounded-xl bg-orange-50/70 border border-orange-200 text-stone-800 space-y-2">
+            <p class="text-stone-500 italic">Click "Generate Brief" to generate instant offline AI intelligence...</p>
+          </div>
+        </div>
+
+        <!-- Top Source Posts -->
+        <div>
+          <h4 class="font-bold text-stone-900 mb-2 uppercase tracking-wider text-[11px]">Top Clustered Mentions</h4>
+          <div id="detail-posts-list" class="space-y-2">
+            <!-- Injected via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SETTINGS -->
+  <div id="modal-settings" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-xs hidden">
+    <div class="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95">
+      <div class="flex items-center justify-between p-4 sm:p-5 border-b border-stone-100 bg-stone-50/50">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center">
+            <i data-lucide="sliders" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-stone-900">Pipeline Sensitivity &amp; Webhooks</h3>
+            <p class="text-xs text-stone-500">Configure velocity thresholds and webhook destinations</p>
+          </div>
+        </div>
+        <button onclick="closeSettingsModal()" class="cursor-pointer p-1 text-stone-400 hover:text-stone-700 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleSettingsSubmit(event)" class="p-4 sm:p-5 space-y-4 text-xs">
+        <div>
+          <label class="font-bold text-stone-700 block mb-1">Velocity Spike Multiplier Threshold (x Baseline)</label>
+          <input id="setting-multiplier" type="number" step="0.5" min="2.0" max="25.0" class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+          <span class="text-[11px] text-stone-400">Default: 5.0x (e.g. 5x normal hourly mentions triggers spike alert)</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-stone-700 block mb-1">Min 1h Volume</label>
+            <input id="setting-minvol" type="number" min="3" max="50" class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+          </div>
+          <div>
+            <label class="font-bold text-stone-700 block mb-1">Cooldown Minutes</label>
+            <input id="setting-cooldown" type="number" min="5" max="180" class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs" />
+          </div>
+        </div>
+
+        <div>
+          <label class="font-bold text-stone-700 block mb-1">Discord Webhook URL</label>
+          <input id="setting-discord" type="url" placeholder="https://discord.com/api/webhooks/..." class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs font-mono" />
+        </div>
+
+        <div>
+          <label class="font-bold text-stone-700 block mb-1">Slack Webhook URL</label>
+          <input id="setting-slack" type="url" placeholder="https://hooks.slack.com/services/..." class="w-full px-3 py-2 rounded-lg border border-stone-200 bg-stone-50 text-xs font-mono" />
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+          <button type="button" onclick="closeSettingsModal()" class="cursor-pointer px-3.5 py-1.5 rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50">Cancel</button>
+          <button type="submit" class="cursor-pointer px-4 py-1.5 rounded-lg bg-stone-900 text-white font-semibold hover:bg-stone-800 shadow-xs">Save Configuration</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC & STATE ENGINE -->
+  <script>
+    let state = {
+      status: null,
+      clusters: [],
+      feed: [],
+      alerts: [],
+      filter: 'all',
+      activeTab: 'clusters',
+      selectedCluster: null,
+      soundEnabled: true,
+      lastAlertCount: -1,
+    };
+
+    // --- RADAR AUDIO ENGINE (Web Audio API) ---
+    function playRadarChime() {
+      if (!state.soundEnabled) return;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!window.audioCtx) {
+          window.audioCtx = new AudioCtx();
+        }
+        const ctx = window.audioCtx;
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        const now = ctx.currentTime;
+        // Ping 1 (880Hz - A5)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(880, now);
+        osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
+        gain1.gain.setValueAtTime(0.2, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.25);
+
+        // Ping 2 (1320Hz - E6)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1320, now + 0.12);
+        osc2.frequency.exponentialRampToValueAtTime(2200, now + 0.28);
+        gain2.gain.setValueAtTime(0.25, now + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.12);
+        osc2.stop(now + 0.35);
+      } catch (e) {
+        console.warn('Radar audio error:', e);
+      }
+    }
+
+    function toggleAudioAlerts() {
+      state.soundEnabled = !state.soundEnabled;
+      const icon = document.getElementById('icon-sound');
+      const text = document.getElementById('text-sound');
+      if (state.soundEnabled) {
+        icon.setAttribute('data-lucide', 'volume-2');
+        icon.className = 'w-3.5 h-3.5 mr-1 text-emerald-600';
+        text.textContent = 'Sound On';
+        playRadarChime();
+      } else {
+        icon.setAttribute('data-lucide', 'volume-x');
+        icon.className = 'w-3.5 h-3.5 mr-1 text-stone-400';
+        text.textContent = 'Muted';
+      }
+      lucide.createIcons();
+    }
+
+    const SPIKE_PRESETS = [
+      {
+        topic: 'Historic Entertainment Box Office Record',
+        entity: 'Warner Bros',
+        surge: 95,
+        headline: 'Global box office surpasses $350M opening weekend milestone, breaking all-time cinema records'
+      },
+      {
+        topic: 'Emergency Central Bank Rate Decision',
+        entity: 'Federal Reserve',
+        surge: 120,
+        headline: 'Federal Reserve announces unprompted policy meeting following sudden international currency shifts'
+      },
+      {
+        topic: 'World Championship Finals Upset',
+        entity: 'FIFA',
+        surge: 110,
+        headline: 'Underdog squad secures historic last-minute victory in championship final watched by 1.2 billion'
+      },
+      {
+        topic: 'Major Atmospheric Space Discovery',
+        entity: 'NASA',
+        surge: 85,
+        headline: 'James Webb and ground arrays detect definitive biosignature markers in exoplanet atmosphere'
+      },
+      {
+        topic: 'Breakthrough Clean Energy Grid Battery',
+        entity: 'MIT',
+        surge: 65,
+        headline: 'Engineers achieve 10x energy density in low-cost iron-air grid storage battery pilot'
+      }
+    ];
+
+    const ARCH_SNIPPETS = {
+      step1: `# Step 1: Real-Time Multi-Source Ingestion (backend/pipeline/ingestion.py)
+import asyncio, httpx
+from backend import database
+from backend.pipeline import nlp_extractor
+
+async def fetch_reddit_rising(sub="news"):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"https://www.reddit.com/r/{sub}/rising.json?limit=10")
+        posts = resp.json()["data"]["children"]
+        for p in posts:
+            post = p["data"]
+            entities = nlp_extractor.extract_entities(post["title"])
+            nlp_extractor.assign_to_cluster(post)
+            database.save_raw_post(post)`,
+
+      step2: `# Step 2: Autonomous NLP Entity & Term Extractor (backend/pipeline/nlp_extractor.py)
+import re
+from backend.models import TopicCluster
+
+def assign_to_cluster(post: RawPost) -> TopicCluster:
+    # 1. Named Entity Overlap scoring
+    # 2. Shared Vocabulary Token Intersection
+    # 3. Dynamic cluster creation or attachment with threshold >= 6.0
+    clusters = database.get_all_clusters()
+    # High cohesion attachment...
+    return best_cluster`,
+
+      step3: `# Step 3: Statistical Rate-of-Change Velocity Engine (backend/pipeline/velocity_engine.py)
+import pandas as pd
+from backend import database
+
+def recalculate_velocity_and_alerts():
+    # V_1h : Volume in last 60 minutes
+    # mu_7d: 7-day rolling hourly baseline
+    # sigma: Standard deviation
+    # Multiplier: V_1h / max(mu_7d, 1.5)
+    # Z-Score: (V_1h - mu_7d) / max(sigma, 1.0)
+    for cluster in database.get_all_clusters():
+        multiplier = round(cluster.volumeLast1h / max(cluster.baselineHourlyRate, 1.5), 2)
+        if multiplier >= config.velocityThresholdMultiplier and cluster.volumeLast1h >= config.min1hVolume:
+            cluster.status = "spike_alert"
+            trigger_alert(cluster)`,
+
+      step4: `# Step 4: Webhook Dispatcher (backend/pipeline/webhooks.py)
+import httpx
+
+def dispatch_webhook(alert, config):
+    payload = {
+        "content": f"🚨 **TREND SPIKE DETECTED**: {alert.topicName}",
+        "embeds": [{
+            "title": f"Velocity Multiplier: {alert.velocityMultiplier}x Normal",
+            "description": f"Volume reached {alert.volume1h} mentions vs baseline of {alert.baselineRate}/hr."
+        }]
+    }
+    httpx.post(config.discordWebhookUrl, json=payload)`
+    };
+
+    // --- FETCH DATA ---
+    async function fetchPipelineOverview() {
+      try {
+        const res = await fetch('/api/pipeline/overview');
+        if (res.ok) {
+          const data = await res.json();
+          const incomingAlerts = data.alerts || [];
+          if (state.lastAlertCount !== -1 && incomingAlerts.length > state.lastAlertCount) {
+            playRadarChime();
+          }
+          state.lastAlertCount = incomingAlerts.length;
+
+          state.status = data.status;
+          state.clusters = data.clusters || [];
+          state.feed = data.feed || [];
+          state.alerts = incomingAlerts;
+
+          updateStatusBadge();
+          renderStatsBanner();
+          renderClusters();
+          renderAlerts();
+          renderFeed();
+        }
+      } catch (e) {
+        console.log('[Fetch] Connecting to backend...', e);
+      }
+    }
+
+    function updateStatusBadge() {
+      if (!state.status) return;
+      const isRunning = state.status.isRunning;
+      const badge = document.getElementById('pipeline-status-badge');
+      const dot = document.getElementById('pipeline-pulse-dot');
+      const text = document.getElementById('pipeline-status-text');
+      const toggleText = document.getElementById('text-toggle');
+      const toggleIcon = document.getElementById('icon-toggle');
+
+      if (isRunning) {
+        badge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200";
+        dot.className = "w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500 pulse-dot";
+        text.textContent = "Pipeline Active";
+        toggleText.textContent = "Pause";
+        toggleIcon.setAttribute('data-lucide', 'pause');
+      } else {
+        badge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200";
+        dot.className = "w-1.5 h-1.5 rounded-full mr-1.5 bg-stone-400";
+        text.textContent = "Pipeline Paused";
+        toggleText.textContent = "Resume";
+        toggleIcon.setAttribute('data-lucide', 'play');
+      }
+      lucide.createIcons();
+    }
+
+    function renderStatsBanner() {
+      if (!state.status) return;
+      document.getElementById('stat-threshold').textContent = state.status.config.velocityThresholdMultiplier + 'x';
+      document.getElementById('stat-minvol').textContent = state.status.config.min1hVolume;
+      document.getElementById('stat-cooldown').textContent = state.status.config.cooldownMinutes + 'm';
+
+      document.getElementById('stat-posts-count').textContent = state.status.totalPostsIngested + ' posts';
+      document.getElementById('stat-clusters-count').textContent = state.status.activeClustersCount + ' clusters';
+      document.getElementById('stat-spikes-count').textContent = state.status.spikesDetectedCount + ' anomalies';
+      document.getElementById('stat-alerts-count').textContent = state.status.alertsFiredCount + ' dispatched';
+
+      document.getElementById('badge-cluster-count').textContent = state.clusters.length;
+      document.getElementById('badge-alert-count').textContent = state.alerts.length;
+    }
+
+    // --- SENTIMENT HELPERS ---
+    const SENTIMENT_ICONS = { bullish: '\ud83d\udcc8', crisis: '\ud83d\udea8', viral: '\u26a1', informational: '\u2139\ufe0f' };
+    function sentimentIcon(label) { return SENTIMENT_ICONS[label] || '\u2139\ufe0f'; }
+
+    // --- RENDER CLUSTERS ---
+    function renderClusters() {
+      const container = document.getElementById('clusters-grid');
+      const query = (document.getElementById('cluster-search-input').value || '').toLowerCase();
+
+      const filtered = state.clusters.filter(c => {
+        const matchesQuery = c.canonicalName.toLowerCase().includes(query) ||
+          c.entities.some(e => e.toLowerCase().includes(query));
+        if (!matchesQuery) return false;
+        if (state.filter === 'spike') return c.status === 'spike_alert';
+        if (state.filter === 'accelerating') return c.status === 'accelerating';
+        if (state.filter === 'emerging') return c.status === 'emerging';
+        if (state.filter === 'decaying') return c.status === 'decaying';
+        if (state.filter === 'crisis') return c.sentiment?.label === 'crisis';
+        if (state.filter === 'bullish') return c.sentiment?.label === 'bullish';
+        if (state.filter === 'viral') return c.sentiment?.label === 'viral';
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full py-12 text-center text-stone-400">
+            <i data-lucide="layers" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+            <p class="text-xs">No matching clusters found. Poll feeds or inject a breaking spike to populate topics.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = filtered.map(c => {
+        const isSpike = c.status === 'spike_alert';
+        const isAccelerating = c.status === 'accelerating';
+        const isEmerging = c.status === 'emerging';
+        const isDecaying = c.status === 'decaying';
+
+        const statusBadge = isSpike
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">SPIKE ALERT</span>'
+          : isAccelerating
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">ACCELERATING</span>'
+          : isEmerging
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">🌱 EMERGING</span>'
+          : isDecaying
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-300">📉 DECAYING</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 text-stone-600">NORMAL</span>';
+
+        const sentimentBadge = c.sentiment
+          ? `<span class="px-1.5 py-0.5 rounded border text-[10px] font-semibold sentiment-${c.sentiment.label}">${sentimentIcon(c.sentiment.label)} ${c.sentiment.label}</span>`
+          : '';
+
+        const multiplierColor = isSpike
+          ? 'text-rose-600 bg-rose-50 border-rose-200'
+          : isAccelerating
+          ? 'text-amber-600 bg-amber-50 border-amber-200'
+          : isEmerging
+          ? 'text-purple-600 bg-purple-50 border-purple-200'
+          : 'text-stone-700 bg-stone-50 border-stone-200';
+
+        const entityChips = c.entities.slice(0, 4).map(e => `
+          <span class="px-1.5 py-0.5 rounded text-[10px] bg-stone-100 text-stone-600 font-medium">${e}</span>
+        `).join('');
+
+        return `
+          <div onclick="openClusterModal('${c.id}')" class="cursor-pointer glass-card rounded-xl p-4 hover:shadow-md hover:border-orange-300 transition-all flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-1.5">
+                ${statusBadge}
+                <div class="flex items-center gap-1.5">
+                  ${sentimentBadge}
+                  <span class="px-2 py-0.5 rounded-md text-xs font-bold font-mono border ${multiplierColor}">
+                    ${c.velocityMultiplier}x
+                  </span>
+                </div>
+              </div>
+              <h3 class="text-sm font-bold text-stone-900 leading-snug line-clamp-2">${c.canonicalName}</h3>
+              <div class="flex flex-wrap gap-1 mt-2">
+                ${entityChips}
+              </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] font-mono text-stone-500">
+              <span>1h Vol: <strong class="text-stone-800">${c.volumeLast1h}</strong></span>
+              <span>Baseline: <strong class="text-stone-800">${c.baselineHourlyRate}/hr</strong></span>
+              <span class="text-emerald-600 font-semibold">+${c.zScore}σ</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function setClusterFilter(filter) {
+      state.filter = filter;
+      const baseActive = 'cursor-pointer px-2.5 py-1 rounded-md text-xs font-medium transition-colors';
+      document.getElementById('filter-all').className = filter === 'all'
+        ? `${baseActive} bg-stone-900 text-white`
+        : `${baseActive} bg-stone-100 text-stone-600 hover:bg-stone-200`;
+      document.getElementById('filter-spikes').className = filter === 'spike'
+        ? `${baseActive} bg-rose-600 text-white flex items-center gap-1.5`
+        : `${baseActive} bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 flex items-center gap-1.5`;
+      document.getElementById('filter-accelerating').className = filter === 'accelerating'
+        ? `${baseActive} bg-amber-600 text-white`
+        : `${baseActive} bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200`;
+      document.getElementById('filter-emerging').className = filter === 'emerging'
+        ? `${baseActive} bg-purple-700 text-white flex items-center gap-1`
+        : `${baseActive} bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 flex items-center gap-1`;
+      document.getElementById('filter-decaying').className = filter === 'decaying'
+        ? `${baseActive} bg-slate-700 text-white flex items-center gap-1`
+        : `${baseActive} bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 flex items-center gap-1`;
+      document.getElementById('filter-crisis').className = filter === 'crisis'
+        ? `${baseActive} bg-red-600 text-white flex items-center gap-1`
+        : `${baseActive} bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 flex items-center gap-1`;
+      document.getElementById('filter-bullish').className = filter === 'bullish'
+        ? `${baseActive} bg-green-600 text-white flex items-center gap-1`
+        : `${baseActive} bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 flex items-center gap-1`;
+      document.getElementById('filter-viral').className = filter === 'viral'
+        ? `${baseActive} bg-amber-600 text-white flex items-center gap-1`
+        : `${baseActive} bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 flex items-center gap-1`;
+      renderClusters();
+    }
+
+    // --- RENDER ALERTS ---
+    function renderAlerts() {
+      const container = document.getElementById('alerts-list');
+      document.getElementById('alerts-count-label').textContent = `(${state.alerts.length} triggered)`;
+
+      if (state.alerts.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-xl border border-stone-200 p-8 text-center text-stone-400">
+            <i data-lucide="bell" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+            <p class="text-xs">No alerts triggered yet. Spikes above the velocity threshold will appear here.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = state.alerts.map(a => `
+        <div class="bg-white rounded-xl border border-rose-200 p-4 shadow-xs space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+              <h4 class="text-sm font-bold text-stone-900">${a.topicName}</h4>
+            </div>
+            <div class="flex items-center gap-2 text-xs font-mono">
+              <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">${a.velocityMultiplier}x Velocity</span>
+              <span class="text-stone-400">•</span>
+              <span class="text-stone-500">${new Date(a.timestamp).toLocaleTimeString()}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-stone-50 p-2.5 rounded-lg text-xs font-mono">
+            <div><span class="text-[10px] text-stone-400 block">1h Volume</span><strong class="text-stone-800">${a.volume1h} mentions</strong></div>
+            <div><span class="text-[10px] text-stone-400 block">Baseline Rate</span><strong class="text-stone-800">${a.baselineRate}/hr</strong></div>
+            <div><span class="text-[10px] text-stone-400 block">Anomaly (Z-Score)</span><strong class="text-emerald-600">+${a.zScore}σ</strong></div>
+            <div><span class="text-[10px] text-stone-400 block">Webhook Status</span><span class="font-bold ${a.dispatchedToWebhook ? 'text-emerald-600' : 'text-stone-400'}">${a.dispatchedToWebhook ? 'Dispatched' : 'Armed'}</span></div>
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    async function clearAlertHistory() {
+      if (!confirm("Are you sure you want to clear the dispatched alert history?")) return;
+      try {
+        const res = await fetch('/api/alerts/clear', { method: 'POST' });
+        if (res.ok) {
+          state.alerts = [];
+          state.lastAlertCount = 0;
+          renderAlerts();
+          renderStatsBanner();
+        }
+      } catch (e) {
+        console.error('Failed to clear alert history:', e);
+      }
+    }
+
+    // --- RENDER FEED ---
+    function renderFeed() {
+      const container = document.getElementById('feed-list');
+      const query = (document.getElementById('feed-search-input').value || '').toLowerCase();
+      const source = document.getElementById('feed-source-select').value;
+
+      const filtered = state.feed.filter(item => {
+        if (source !== 'all' && item.source !== source) return false;
+        const matchesQuery = item.title.toLowerCase().includes(query) ||
+          item.entities.some(e => e.text.toLowerCase().includes(query));
+        return matchesQuery;
+      });
+
+      document.getElementById('feed-buffer-count').textContent = `(${filtered.length} buffered)`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-xl border border-stone-200 p-8 text-center text-stone-400">
+            <i data-lucide="database" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+            <p class="text-xs">No posts currently matching filter.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        const sourceBadges = {
+          reddit: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-800 border border-orange-200">Reddit</span>',
+          google_trends: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">Google Trends</span>',
+          bluesky: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-800 border border-sky-200">Bluesky</span>',
+          hackernews: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">Hacker News</span>',
+          wikipedia: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">Wikipedia</span>',
+          wire_news: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">BBC Wire</span>',
+          x_twitter: '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-stone-100 text-stone-800 border border-stone-300">X / Social</span>',
+        };
+
+        const badge = sourceBadges[item.source] || '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-stone-100 text-stone-600">Feed</span>';
+        const entities = item.entities.map(e => `
+          <span class="px-1.5 py-0.5 rounded text-[10px] bg-stone-100 text-stone-600 font-mono">${e.text}</span>
+        `).join('');
+
+        return `
+          <div class="bg-white rounded-xl border border-stone-200 p-3.5 shadow-2xs hover:border-orange-300 transition-all">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="flex items-center gap-2">
+                ${badge}
+                <span class="text-xs text-stone-500 font-mono">${item.author || item.subreddit || 'feed'}</span>
+              </div>
+              <span class="text-[11px] text-stone-400 font-mono">${new Date(item.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-stone-900 hover:text-orange-600 block transition-colors leading-snug">
+              ${item.title}
+            </a>
+            <div class="flex flex-wrap gap-1 mt-2">
+              ${entities}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // --- TAB SWITCHER ---
+    function switchTab(tab) {
+      state.activeTab = tab;
+      const tabs = ['clusters', 'alerts', 'feed', 'architecture'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        const view = document.getElementById(`view-${t}`);
+        if (t === tab) {
+          btn.className = "cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-stone-900 text-white";
+          view.classList.remove('hidden');
+        } else {
+          btn.className = "cursor-pointer px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors text-stone-600 hover:text-stone-900 hover:bg-stone-100";
+          view.classList.add('hidden');
+        }
+      });
+      if (tab === 'architecture') switchArchTab('step3');
+    }
+
+    function switchArchTab(step) {
+      document.getElementById('arch-code-block').querySelector('code').textContent = ARCH_SNIPPETS[step] || '';
+      ['step1', 'step2', 'step3', 'step4'].forEach(s => {
+        const b = document.getElementById(`arch-tab-${s}`);
+        b.className = s === step
+          ? "cursor-pointer px-2.5 py-1 text-xs font-semibold rounded bg-white text-stone-900 shadow-2xs"
+          : "cursor-pointer px-2.5 py-1 text-xs font-semibold rounded text-stone-600 hover:text-stone-900";
+      });
+    }
+
+    // --- ACTIONS ---
+    async function togglePipeline() {
+      try {
+        const res = await fetch('/api/pipeline/toggle', { method: 'POST' });
+        if (res.ok) fetchPipelineOverview();
+      } catch (e) { console.error(e); }
+    }
+
+    async function triggerManualPoll() {
+      const icon = document.getElementById('icon-poll');
+      icon.classList.add('animate-spin');
+      try {
+        await fetch('/api/pipeline/run-step', { method: 'POST' });
+        await fetchPipelineOverview();
+      } catch (e) { console.error(e); }
+      finally { icon.classList.remove('animate-spin'); }
+    }
+
+    // --- SPIKE MODAL ---
+    function openSpikeModal() {
+      applySpikePreset();
+      document.getElementById('modal-spike').classList.remove('hidden');
+    }
+
+    function closeSpikeModal() {
+      document.getElementById('modal-spike').classList.add('hidden');
+    }
+
+    function applySpikePreset() {
+      const idx = parseInt(document.getElementById('spike-preset-select').value) || 0;
+      const preset = SPIKE_PRESETS[idx];
+      document.getElementById('spike-topic-input').value = preset.topic;
+      document.getElementById('spike-entity-input').value = preset.entity;
+      document.getElementById('spike-volume-input').value = preset.surge;
+      document.getElementById('spike-headline-input').value = preset.headline;
+    }
+
+    async function handleInjectSpikeSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-spike');
+      btn.disabled = true;
+      btn.innerHTML = `<span>Injecting...</span>`;
+
+      try {
+        const payload = {
+          topicName: document.getElementById('spike-topic-input').value,
+          entityName: document.getElementById('spike-entity-input').value,
+          volumeSpike: parseInt(document.getElementById('spike-volume-input').value),
+          headline: document.getElementById('spike-headline-input').value
+        };
+
+        const res = await fetch('/api/pipeline/inject-spike', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          closeSpikeModal();
+          await fetchPipelineOverview();
+          switchTab('clusters');
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="zap" class="w-3.5 h-3.5 fill-white"></i><span>Inject Breaking Surge</span>`;
+        lucide.createIcons();
+      }
+    }
+
+    // --- CHART.JS VISUAL ANALYTICS ---
+    function renderClusterCharts(cluster) {
+      if (window.activeVelocityChart) {
+        try { window.activeVelocityChart.destroy(); } catch (e) {}
+        window.activeVelocityChart = null;
+      }
+      if (window.activeSourcesChart) {
+        try { window.activeSourcesChart.destroy(); } catch (e) {}
+        window.activeSourcesChart = null;
+      }
+
+      // 1. Velocity Acceleration Curve
+      const velCanvas = document.getElementById('cluster-velocity-chart');
+      if (velCanvas) {
+        const ctxVel = velCanvas.getContext('2d');
+        const labels = ['-5h', '-4h', '-3h', '-2h', '-1h', 'Now'];
+        const baseline = cluster.baselineHourlyRate || 1.5;
+        const currentVol = cluster.volumeLast1h || 1;
+        const threshold = Math.round(baseline * 5.0 * 10) / 10;
+
+        let history = [];
+        if (Array.isArray(cluster.hourlyHistory) && cluster.hourlyHistory.length >= 6) {
+          history = cluster.hourlyHistory.slice(-6);
+        } else {
+          const s1 = Math.max(0, Math.round(baseline * 0.8));
+          const s2 = Math.max(0, Math.round(baseline * 1.0));
+          const s3 = Math.max(0, Math.round(baseline * 1.2));
+          const s4 = Math.max(0, Math.round(baseline * 1.5 + (currentVol - baseline) * 0.25));
+          const s5 = Math.max(0, Math.round(baseline * 1.8 + (currentVol - baseline) * 0.65));
+          history = [s1, s2, s3, s4, s5, currentVol];
+        }
+
+        const thresholdLine = Array(6).fill(threshold);
+
+        window.activeVelocityChart = new Chart(ctxVel, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Velocity (Mentions/hr)',
+                data: history,
+                borderColor: '#ea580c',
+                backgroundColor: 'rgba(234, 88, 12, 0.12)',
+                borderWidth: 2.5,
+                tension: 0.35,
+                fill: true,
+                pointBackgroundColor: '#ea580c',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+              },
+              {
+                label: 'Spike Threshold (5x Baseline)',
+                data: thresholdLine,
+                borderColor: '#e11d48',
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                fill: false,
+                pointRadius: 0,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#1c1917',
+                titleFont: { family: 'Outfit', size: 11 },
+                bodyFont: { family: 'JetBrains Mono', size: 10 },
+                padding: 8,
+                cornerRadius: 6,
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#78716c' }
+              },
+              y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#78716c' }
+              }
+            }
+          }
+        });
+      }
+
+      // 2. Source Channel Dispersion Donut
+      const srcCanvas = document.getElementById('cluster-sources-chart');
+      if (srcCanvas) {
+        const ctxSrc = srcCanvas.getContext('2d');
+        const sourceCounts = {};
+        (cluster.topPosts || []).forEach(p => {
+          const s = p.source || 'other';
+          sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+        });
+
+        if (Object.keys(sourceCounts).length === 0) {
+          sourceCounts['reddit'] = 1;
+        }
+
+        const sourceColorMap = {
+          reddit: '#ea580c',
+          wire_news: '#059669',
+          google_trends: '#2563eb',
+          hackernews: '#d97706',
+          bluesky: '#0284c7',
+          wikipedia: '#4f46e5',
+          x_twitter: '#475569',
+          other: '#a8a29e'
+        };
+
+        const sourceLabels = {
+          reddit: 'Reddit',
+          wire_news: 'BBC News',
+          google_trends: 'Google Trends',
+          hackernews: 'Hacker News',
+          bluesky: 'Bluesky',
+          wikipedia: 'Wikipedia',
+          x_twitter: 'X / Social',
+          other: 'Other'
+        };
+
+        const labels = Object.keys(sourceCounts).map(k => sourceLabels[k] || k);
+        const dataValues = Object.values(sourceCounts);
+        const bgColors = Object.keys(sourceCounts).map(k => sourceColorMap[k] || '#a8a29e');
+
+        const channelsCountEl = document.getElementById('detail-sources-count');
+        if (channelsCountEl) {
+          channelsCountEl.textContent = `${Object.keys(sourceCounts).length} channel${Object.keys(sourceCounts).length === 1 ? '' : 's'}`;
+        }
+
+        window.activeSourcesChart = new Chart(ctxSrc, {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: dataValues,
+              backgroundColor: bgColors,
+              borderWidth: 2,
+              borderColor: '#ffffff',
+              hoverOffset: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '62%',
+            plugins: {
+              legend: {
+                position: 'right',
+                labels: {
+                  boxWidth: 10,
+                  font: { family: 'Outfit', size: 10 },
+                  color: '#44403c',
+                  padding: 8
+                }
+              },
+              tooltip: {
+                backgroundColor: '#1c1917',
+                bodyFont: { family: 'JetBrains Mono', size: 10 },
+                cornerRadius: 6,
+                padding: 8
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // --- CLUSTER DETAIL MODAL ---
+    function openClusterModal(clusterId) {
+      const cluster = state.clusters.find(c => c.id === clusterId);
+      if (!cluster) return;
+      state.selectedCluster = cluster;
+
+      document.getElementById('modal-cluster-status').textContent = cluster.status.replace('_', ' ');
+      document.getElementById('modal-cluster-id').textContent = cluster.id;
+      document.getElementById('modal-cluster-title').textContent = cluster.canonicalName;
+
+      document.getElementById('detail-v1h').textContent = cluster.volumeLast1h;
+      document.getElementById('detail-baseline').textContent = cluster.baselineHourlyRate + '/hr';
+      document.getElementById('detail-multiplier').textContent = cluster.velocityMultiplier + 'x';
+      document.getElementById('detail-zscore').textContent = '+' + cluster.zScore + 'σ';
+
+      // Sentiment panel
+      const sentimentPanel = document.getElementById('detail-sentiment-panel');
+      const sentimentCard = document.getElementById('detail-sentiment-card');
+      const sentimentBadgeModal = document.getElementById('modal-cluster-sentiment-badge');
+      if (cluster.sentiment) {
+        sentimentPanel.classList.remove('hidden');
+        const s = cluster.sentiment;
+        const icon = sentimentIcon(s.label);
+        const confPct = Math.round(s.confidence * 100);
+        sentimentCard.className = `flex items-start gap-3 p-3 rounded-xl border text-xs sentiment-${s.label}`;
+        sentimentCard.innerHTML = `
+          <span class="text-2xl leading-none">${icon}</span>
+          <div>
+            <span class="font-bold capitalize text-sm">${s.label}</span>
+            <span class="ml-2 text-[10px] font-mono opacity-70">${confPct}% confidence</span>
+            <p class="mt-1 opacity-80">${s.reasoning}</p>
+          </div>
+        `;
+        sentimentBadgeModal.innerHTML = `<span class="px-2 py-0.5 rounded border text-[10px] font-semibold sentiment-${s.label}">${icon} ${s.label}</span>`;
+      } else {
+        sentimentPanel.classList.add('hidden');
+        sentimentBadgeModal.innerHTML = '';
+      }
+
+      const aiBox = document.getElementById('detail-ai-box');
+      if (cluster.aiSummary) {
+        aiBox.innerHTML = `
+          <div>
+            <span class="font-bold text-orange-900 block mb-0.5">Summary</span>
+            <p>${cluster.aiSummary.summary}</p>
+          </div>
+          <div>
+            <span class="font-bold text-orange-900 block mb-0.5">Root Cause of Spike</span>
+            <p>${cluster.aiSummary.whySpiking}</p>
+          </div>
+          <div class="flex items-center gap-4 pt-1 font-mono text-[11px]">
+            <span>Virality Score: <strong class="text-orange-600">${cluster.aiSummary.viralityScore}/100</strong></span>
+            <span>Recommended Action: <em>${cluster.aiSummary.recommendedAction}</em></span>
+          </div>
+        `;
+      } else {
+        aiBox.innerHTML = `<p class="text-stone-500 italic">Click "Generate Brief" to generate instant offline AI intelligence...</p>`;
+      }
+
+      const postsContainer = document.getElementById('detail-posts-list');
+      postsContainer.innerHTML = (cluster.topPosts || []).map(p => `
+        <div class="p-2.5 rounded-lg border border-stone-200 bg-stone-50/50">
+          <a href="${p.url}" target="_blank" class="font-semibold text-stone-900 hover:text-orange-600 block">${p.title}</a>
+          <span class="text-[10px] text-stone-400 font-mono">${p.source} • ${new Date(p.timestamp).toLocaleTimeString()}</span>
+        </div>
+      `).join('') || '<p class="text-stone-400 text-xs">No posts yet attached.</p>';
+
+      document.getElementById('modal-cluster-detail').classList.remove('hidden');
+      renderClusterCharts(cluster);
+      lucide.createIcons();
+    }
+
+    function closeClusterModal() {
+      if (window.activeVelocityChart) {
+        try { window.activeVelocityChart.destroy(); } catch (e) {}
+        window.activeVelocityChart = null;
+      }
+      if (window.activeSourcesChart) {
+        try { window.activeSourcesChart.destroy(); } catch (e) {}
+        window.activeSourcesChart = null;
+      }
+      document.getElementById('modal-cluster-detail').classList.add('hidden');
+    }
+
+    async function triggerAISummarize() {
+      if (!state.selectedCluster) return;
+      const btn = document.getElementById('btn-generate-brief');
+      btn.disabled = true;
+      btn.textContent = "Generating Offline Intelligence...";
+
+      try {
+        const res = await fetch('/api/alert/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clusterId: state.selectedCluster.id })
+        });
+        if (res.ok) {
+          const summary = await res.json();
+          state.selectedCluster.aiSummary = summary;
+          openClusterModal(state.selectedCluster.id);
+          fetchPipelineOverview();
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Regenerate Brief";
+      }
+    }
+
+    // --- SETTINGS MODAL ---
+    function openSettingsModal() {
+      if (state.status && state.status.config) {
+        document.getElementById('setting-multiplier').value = state.status.config.velocityThresholdMultiplier;
+        document.getElementById('setting-minvol').value = state.status.config.min1hVolume;
+        document.getElementById('setting-cooldown').value = state.status.config.cooldownMinutes;
+        document.getElementById('setting-discord').value = state.status.config.discordWebhookUrl || '';
+        document.getElementById('setting-slack').value = state.status.config.slackWebhookUrl || '';
+      }
+      document.getElementById('modal-settings').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('modal-settings').classList.add('hidden');
+    }
+
+    async function handleSettingsSubmit(e) {
+      e.preventDefault();
+      try {
+        const payload = {
+          velocityThresholdMultiplier: parseFloat(document.getElementById('setting-multiplier').value),
+          min1hVolume: parseInt(document.getElementById('setting-minvol').value),
+          cooldownMinutes: parseInt(document.getElementById('setting-cooldown').value),
+          discordWebhookUrl: document.getElementById('setting-discord').value,
+          slackWebhookUrl: document.getElementById('setting-slack').value,
+        };
+
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          closeSettingsModal();
+          fetchPipelineOverview();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function testWebhookPing() {
+      const url = document.getElementById('webhook-test-url-input').value;
+      const box = document.getElementById('webhook-test-result');
+      if (!url) return;
+
+      box.className = "mt-3 pt-3 border-t border-stone-100 text-xs font-medium text-stone-500 block";
+      box.textContent = "Pinging webhook destination...";
+
+      try {
+        const res = await fetch('/api/webhook/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhookUrl: url })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          box.className = "mt-3 pt-3 border-t border-stone-100 text-xs font-medium text-emerald-600 block";
+          box.textContent = "✓ Webhook connection successful! Ping received.";
+        } else {
+          box.className = "mt-3 pt-3 border-t border-stone-100 text-xs font-medium text-rose-600 block";
+          box.textContent = "✗ Webhook failed: " + (data.detail || data.error || 'Check URL');
+        }
+      } catch (err) {
+        box.className = "mt-3 pt-3 border-t border-stone-100 text-xs font-medium text-rose-600 block";
+        box.textContent = "✗ Webhook ping error: " + err.message;
+      }
+    }
+
+    // --- AUTO POLLING ---
+    fetchPipelineOverview();
+    setInterval(fetchPipelineOverview, 4000);
+    lucide.createIcons();
+  </script>
+</body>
+</html>

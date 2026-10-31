@@ -1,0 +1,1 @@
+# Trend detection pipeline package
